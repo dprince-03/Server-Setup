@@ -1,0 +1,41 @@
+# .github/workflows/deploy-container-app.yml: build in ACR → deploy a new Container App revision. OIDC federated credential, no stored secrets.
+# GitHub Environment "production" → Variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, ACR_NAME, RESOURCE_GROUP, CONTAINER_APP
+name: deploy-container-app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push in ACR (no local Docker credentials)
+        run: |
+          az acr build --registry "${{ vars.ACR_NAME }}" --image "app:${{ github.sha }}" .
+
+      - name: Deploy new revision
+        run: |
+          az containerapp update \
+            --name "${{ vars.CONTAINER_APP }}" --resource-group "${{ vars.RESOURCE_GROUP }}" \
+            --image "${{ vars.ACR_NAME }}.azurecr.io/app:${{ github.sha }}" \
+            --revision-suffix "r${GITHUB_SHA::7}"
+
+      - name: Verify
+        run: |
+          az containerapp revision list -n "${{ vars.CONTAINER_APP }}" -g "${{ vars.RESOURCE_GROUP }}" \
+            --query "[?properties.active].{name:name,health:properties.healthState,traffic:properties.trafficWeight}" -o table

@@ -1,0 +1,23 @@
+# /etc/fail2ban/jail.local
+[DEFAULT]
+# Never ban your own admin/VPN networks (edit these)
+ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 192.168.0.0/16 100.64.0.0/10
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+# Escalate bans for repeat offenders
+bantime.increment = true
+bantime.maxtime   = 1w
+# Use the systemd journal (modern distros)
+backend = systemd
+
+[sshd]
+enabled = true
+port    = ssh
+mode    = aggressive
+
+# Enable if Nginx is installed:
+# [nginx-http-auth]
+# enabled = true
+# [nginx-botsearch]
+# enabled = true

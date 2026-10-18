@@ -1,0 +1,58 @@
+# Caddyfile: automatic HTTPS for several apps on one VPS.
+# DNS A/AAAA records must point to this server before the first start (HTTP-01 challenge).
+# Validate: caddy validate --config Caddyfile    Reload: caddy reload (or docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile)
+{
+	email admin@example.com
+	# Uncomment while testing to avoid Let's Encrypt rate limits:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+	encode zstd gzip
+}
+
+# Static marketing site
+example.com {
+	import security_headers
+	root * /srv/www/example.com
+	file_server
+}
+
+www.example.com {
+	redir https://example.com{uri} permanent
+}
+
+# App container (service name "app" on the compose network, port 3000)
+app.example.com {
+	import security_headers
+	reverse_proxy app:3000 {
+		health_uri /healthz
+		health_interval 10s
+	}
+}
+
+# API with two replicas (round-robin + health checks)
+api.example.com {
+	import security_headers
+	reverse_proxy api-1:8000 api-2:8000 {
+		lb_policy round_robin
+		health_uri /health
+	}
+}
+
+# MTA-STS policy for email (see VPS/05-email.md)
+mta-sts.example.com {
+	respond /.well-known/mta-sts.txt `version: STSv1
+mode: enforce
+mx: mx1.mailprovider.com
+mx: mx2.mailprovider.com
+max_age: 604800` 200
+}

@@ -1,0 +1,15 @@
+# Never commit secrets or state (see SECRETS.md)
+.env
+.env.*
+*.pem
+*.key
+**/wireguard/out/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+backend.hcl
+.terraform.lock.hcl
+crash.log
+infra-logs/

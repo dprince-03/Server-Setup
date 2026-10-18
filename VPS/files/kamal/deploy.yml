@@ -1,0 +1,63 @@
+# config/deploy.yml: Kamal 2. Zero-downtime Docker deploys to plain VPSes.
+# Docs: https://kamal-deploy.org   Commands: kamal setup | kamal deploy | kamal rollback <ver> | kamal app logs -f
+service: myapp
+image: your-github-user/myapp
+
+servers:
+  web:
+    hosts:
+      - 10.210.0.1          # private/WireGuard IPs or public IPs
+      - 10.210.0.2
+  job:
+    hosts:
+      - 10.210.0.3
+    cmd: bin/jobs           # background worker command
+
+# kamal-proxy terminates TLS with Let's Encrypt and swaps containers with zero downtime
+proxy:
+  ssl: true
+  host: app.example.com
+  app_port: 3000
+  healthcheck:
+    path: /up
+    interval: 3
+
+registry:
+  server: ghcr.io
+  username: your-github-user
+  password:
+    - KAMAL_REGISTRY_PASSWORD          # .kamal/secrets FETCHES it from the secret manager (see files/kamal/secrets)
+
+builder:
+  arch: amd64
+
+env:
+  clear:
+    APP_URL: https://app.example.com
+  secret:
+    - DATABASE_URL
+    - APP_SECRET_KEY
+
+ssh:
+  user: deploy
+
+# Stateful services run as "accessories" on a chosen host
+accessories:
+  db:
+    image: postgres:18
+    host: 10.210.0.3
+    port: "127.0.0.1:5432:5432"
+    env:
+      clear:
+        POSTGRES_USER: app
+        POSTGRES_DB: app
+      secret:
+        - POSTGRES_PASSWORD
+    directories:
+      - data:/var/lib/postgresql
+  redis:
+    image: redis:latest
+    host: 10.210.0.3
+    port: "127.0.0.1:6379:6379"
+    directories:
+      - data:/data

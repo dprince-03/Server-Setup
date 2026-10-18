@@ -1,0 +1,35 @@
+# Internal reverse proxy for lab services with real Let's Encrypt certs via the DNS-01 challenge
+# (works without exposing anything to the internet).
+# Needs a Caddy build with your DNS provider module, e.g. Cloudflare:
+#   xcaddy build --with github.com/caddy-dns/cloudflare     (or the caddy:builder Docker image)
+# Point *.lab.example.com → this host's private IP in your internal DNS.
+# CLOUDFLARE_API_TOKEN is injected by the secret manager at start (e.g. a systemd drop-in running
+# `bws run -- caddy run ...`, see Server-Setup/SECRETS.md). Never write it into this file.
+{
+	email you@example.com
+	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
+
+(internal_only) {
+	@external not remote_ip private_ranges 100.64.0.0/10
+	respond @external "Forbidden" 403
+}
+
+grafana.lab.example.com {
+	import internal_only
+	reverse_proxy 10.10.20.31:3000
+}
+
+pve.lab.example.com {
+	import internal_only
+	reverse_proxy https://10.10.10.11:8006 {
+		transport http {
+			tls_insecure_skip_verify   # Proxmox's self-signed cert on the backend only
+		}
+	}
+}
+
+uptime.lab.example.com {
+	import internal_only
+	reverse_proxy 10.10.20.31:3001
+}

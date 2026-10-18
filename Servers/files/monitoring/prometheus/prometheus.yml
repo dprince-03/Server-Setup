@@ -1,0 +1,44 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Every server runs node_exporter on :9100 (firewalled to the monitoring host). Edit the IPs.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]          # this monitoring host
+        labels: { env: lab }
+      - targets: ["10.10.20.11:9100", "10.10.20.12:9100", "10.10.20.21:9100"]
+        labels: { env: lab }
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # HTTPS checks: availability + TLS certificate expiry
+  - job_name: blackbox-https
+    metrics_path: /probe
+    params: { module: [http_2xx] }
+    static_configs:
+      - targets:
+          - https://example.com
+          - https://grafana.lab.example.com
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

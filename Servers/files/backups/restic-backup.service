@@ -1,0 +1,17 @@
+# /etc/systemd/system/restic-backup.service: secrets come from the secret manager (Server-Setup/SECRETS.md).
+# Needs: /etc/credstore.encrypted/bws-token (created by the human with systemd-creds) and /etc/restic/backup.conf
+[Unit]
+Description=restic backup
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+LoadCredentialEncrypted=bws-token:/etc/credstore.encrypted/bws-token
+ExecStart=/bin/bash -ec '. /etc/restic/backup.conf; \
+  export BWS_ACCESS_TOKEN="$$(cat "$$CREDENTIALS_DIRECTORY/bws-token")"; \
+  exec bws run --project-id "$$BWS_PROJECT_ID" -- /usr/local/sbin/restic-backup'
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true
+ProtectHome=read-only

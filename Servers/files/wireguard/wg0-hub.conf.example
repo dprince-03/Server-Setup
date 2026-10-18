@@ -1,0 +1,21 @@
+# /etc/wireguard/wg0.conf on the HUB (router, VPS or lab gateway). chmod 600.
+# Generate keys:  umask 077; wg genkey | tee hub.key | wg pubkey > hub.pub
+# Hub needs IP forwarding to route between peers/LAN: sysctl -w net.ipv4.ip_forward=1 (persist in /etc/sysctl.d/)
+[Interface]
+Address    = 10.200.0.1/24
+ListenPort = 51820
+PrivateKey = <HUB_PRIVATE_KEY>
+# Optional: let VPN clients reach the LAN behind the hub (adjust the interface name):
+# PostUp   = nft add table ip wgnat; nft add chain ip wgnat post '{ type nat hook postrouting priority 100; }'; nft add rule ip wgnat post oifname "eth0" masquerade
+# PostDown = nft delete table ip wgnat
+
+# One [Peer] block per device/server
+[Peer]
+# laptop
+PublicKey  = <LAPTOP_PUBLIC_KEY>
+AllowedIPs = 10.200.0.10/32
+
+[Peer]
+# vps-fra-01
+PublicKey  = <VPS_PUBLIC_KEY>
+AllowedIPs = 10.200.0.21/32

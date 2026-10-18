@@ -1,0 +1,129 @@
+---
+# Baseline for Ubuntu/Debian servers (Servers ch. 02/03), as code.
+# Dry run first:  ansible-playbook playbooks/baseline.yml --check --diff
+# Requires collections: ansible.posix, community.general  (ansible-galaxy collection install ansible.posix community.general)
+- name: Server baseline
+  hosts: linux
+  become: true
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Only Debian-family is handled by this playbook
+      ansible.builtin.assert:
+        that: ansible_os_family == "Debian"
+        fail_msg: "Use the RHEL variant (dnf/firewalld) for {{ inventory_hostname }}"
+
+  tasks:
+    - name: Full upgrade
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: full
+        cache_valid_time: 3600
+
+    - name: Base packages
+      ansible.builtin.apt:
+        name: "{{ base_packages }}"
+        state: present
+
+    - name: Timezone
+      community.general.timezone:
+        name: "{{ timezone }}"
+
+    - name: SSH login group
+      ansible.builtin.group:
+        name: "{{ admin_group }}"
+
+    - name: Admin users
+      ansible.builtin.user:
+        name: "{{ item.name }}"
+        state: "{{ item.state }}"
+        groups: "{{ [admin_group, 'sudo'] if item.state == 'present' else omit }}"
+        append: true
+        shell: /bin/bash
+        remove: "{{ item.state == 'absent' }}"
+      loop: "{{ admins }}"
+
+    - name: Admin SSH keys (exclusive = only these keys)
+      ansible.posix.authorized_key:
+        user: "{{ item.name }}"
+        key: "{{ item.keys | join('\n') }}"
+        exclusive: true
+      loop: "{{ admins | selectattr('state', 'equalto', 'present') | list }}"
+
+    - name: SSH hardening drop-in
+      ansible.builtin.copy:
+        src: ../../configs/sshd/99-hardening.conf
+        dest: /etc/ssh/sshd_config.d/99-hardening.conf
+        mode: "0644"
+        validate: /usr/sbin/sshd -t -f %s
+      notify: Reload ssh
+
+    - name: Kernel hardening
+      ansible.builtin.copy:
+        src: ../../configs/sysctl/99-server-hardening.conf
+        dest: /etc/sysctl.d/99-server-hardening.conf
+        mode: "0644"
+      notify: Reload sysctl
+
+    - name: Unattended security upgrades
+      ansible.builtin.copy:
+        src: ../../configs/apt/52unattended-upgrades-local
+        dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+        mode: "0644"
+
+    - name: fail2ban config
+      ansible.builtin.copy:
+        src: ../../configs/fail2ban/jail.local
+        dest: /etc/fail2ban/jail.local
+        mode: "0644"
+      notify: Restart fail2ban
+
+    # Firewall: allow SSH BEFORE enabling to avoid lockout
+    - name: UFW allow SSH from admin networks
+      community.general.ufw:
+        rule: allow
+        src: "{{ item }}"
+        port: "{{ ssh_port | string }}"
+        proto: tcp
+      loop: "{{ ssh_allowed_cidrs }}"
+
+    - name: UFW allow node_exporter from monitoring
+      community.general.ufw:
+        rule: allow
+        src: "{{ monitoring_cidr }}"
+        port: "9100"
+        proto: tcp
+
+    - name: UFW extra ports
+      community.general.ufw:
+        rule: allow
+        port: "{{ item | string }}"
+        proto: tcp
+      loop: "{{ firewall_allowed_tcp_ports }}"
+
+    - name: UFW default deny + enable
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    - name: Services enabled
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop: [fail2ban, auditd, chrony, prometheus-node-exporter]
+
+  handlers:
+    - name: Reload ssh
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded
+    - name: Reload sysctl
+      ansible.builtin.command: sysctl --system
+      changed_when: true
+    - name: Restart fail2ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: restarted

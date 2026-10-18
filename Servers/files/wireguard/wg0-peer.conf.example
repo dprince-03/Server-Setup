@@ -1,0 +1,14 @@
+# /etc/wireguard/wg0.conf on a PEER (laptop, phone, remote server). chmod 600.
+[Interface]
+Address    = 10.200.0.10/32
+PrivateKey = <PEER_PRIVATE_KEY>
+# Use the lab's internal DNS while connected (optional)
+# DNS = 10.10.20.53
+
+[Peer]
+PublicKey  = <HUB_PUBLIC_KEY>
+Endpoint   = vpn.example.com:51820
+# Split tunnel: only the VPN + lab subnets go through the tunnel
+AllowedIPs = 10.200.0.0/24, 10.10.0.0/16
+# Full tunnel instead: AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25

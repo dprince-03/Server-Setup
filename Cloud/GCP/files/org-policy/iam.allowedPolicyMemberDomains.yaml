@@ -1,0 +1,9 @@
+# Domain-restricted sharing: only identities from your Cloud Identity/Workspace customer can be granted IAM roles.
+# Get your customer ID:  gcloud organizations describe ORG_ID --format='value(owner.directoryCustomerId)'
+# Note: this blocks allUsers (public Cloud Run/GCS). Exempt the projects that serve public content.
+name: organizations/ORG_ID/policies/iam.allowedPolicyMemberDomains
+spec:
+  rules:
+    - values:
+        allowedValues:
+          - C0xxxxxxx

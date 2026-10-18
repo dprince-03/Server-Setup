@@ -1,0 +1,35 @@
+# /etc/restic/backup.conf: NON-SECRET settings only (safe to keep in Git).
+# Secrets come from the secret manager at runtime (see Server-Setup/SECRETS.md). Create these in your
+# secret manager project YOURSELF (exact names):
+#   RESTIC_PASSWORD          repository password (keep a second copy in your personal password manager!)
+#   AWS_ACCESS_KEY_ID        for S3-compatible repositories (an ID, but keep it next to its key)
+#   AWS_SECRET_ACCESS_KEY
+#   MYSQL_BACKUP_PASSWORD    only if MYSQL_DATABASES is set
+#   MONGO_BACKUP_URI         only if MONGO_BACKUP=yes (mongodb://user:pass@127.0.0.1:27017/?authSource=admin)
+
+# Secret manager project that holds the values above (an ID, not a secret)
+BWS_PROJECT_ID=00000000-0000-0000-0000-000000000000
+
+# Repository: pick one
+# S3-compatible (AWS S3 / Backblaze B2 / Wasabi / MinIO). Enable Object Lock on the bucket for immutability.
+RESTIC_REPOSITORY=s3:https://s3.eu-central-1.amazonaws.com/my-backup-bucket/servers
+# RESTIC_REPOSITORY=sftp:backup@backup-host:/srv/restic/servers
+# RESTIC_REPOSITORY=rest:https://backup.example.com/servers      (rest-server --append-only)
+
+# What to back up (space separated)
+BACKUP_PATHS="/etc /home /opt/stacks /var/lib/docker/volumes"
+RESTIC_EXCLUDE_FILE=/etc/restic/excludes.txt
+
+# Databases (leave empty if not used)
+PG_DATABASES=""             # e.g. "app analytics"  (uses local peer auth as the postgres user, so no password)
+MYSQL_DATABASES=""          # e.g. "shop"
+MYSQL_BACKUP_USER="backup"
+MONGO_BACKUP="no"
+
+# Retention
+KEEP_DAILY=7
+KEEP_WEEKLY=4
+KEEP_MONTHLY=12
+
+# Optional push heartbeat (Uptime Kuma "Push" monitor / healthchecks.io). Not a secret, but keep it unguessable
+HEARTBEAT_URL=""

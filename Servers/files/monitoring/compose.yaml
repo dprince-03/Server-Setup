@@ -1,0 +1,106 @@
+# Monitoring stack: Prometheus + Alertmanager + Grafana + Loki + Alloy + node-exporter + cAdvisor + Blackbox + Uptime Kuma
+#   Run as the stack@monitoring systemd unit (Servers/files/secrets/stack@.service), which injects secrets from the
+#   secret manager: no .env file. Secrets YOU create in the secret manager project:
+#     GRAFANA_ADMIN_PASSWORD, ALERTMANAGER_SMTP_PASSWORD
+# Ports are bound to 127.0.0.1. Reach the UIs via the reverse proxy (with auth/SSO) or an SSH tunnel:
+#   ssh -L 3000:127.0.0.1:3000 mon-01
+# Image tags use 'latest' (newest stable). Pin to specific versions once things are stable in production.
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    restart: unless-stopped
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+    secrets: [smtp_password]           # → /run/secrets/smtp_password (referenced in alertmanager.yml)
+    ports: ["127.0.0.1:9093:9093"]
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: https://grafana.lab.example.com
+    secrets: [grafana_admin_password]
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports: ["127.0.0.1:3000:3000"]
+
+  loki:
+    image: grafana/loki:latest
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki-data:/loki
+    ports: ["127.0.0.1:3100:3100"]
+
+  alloy:
+    # Collects this host's journal + container logs and ships them to Loki. Run Alloy on every server you want logs from.
+    image: grafana/alloy:latest
+    restart: unless-stopped
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # trusted, read-only use only
+    ports: ["127.0.0.1:12345:12345"]
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+    command: [--path.rootfs=/host]
+    pid: host
+    volumes: ["/:/host:ro,rslave"]
+    ports: ["127.0.0.1:9100:9100"]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    restart: unless-stopped
+    privileged: true
+    devices: ["/dev/kmsg"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports: ["127.0.0.1:8080:8080"]
+
+  blackbox:
+    image: prom/blackbox-exporter:latest
+    restart: unless-stopped
+    ports: ["127.0.0.1:9115:9115"]
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    restart: unless-stopped
+    volumes: ["uptime-kuma-data:/app/data"]
+    ports: ["127.0.0.1:3001:3001"]
+
+# Values come from environment variables injected by the secret manager (bws run), mounted as files.
+secrets:
+  grafana_admin_password:
+    environment: GRAFANA_ADMIN_PASSWORD
+  smtp_password:
+    environment: ALERTMANAGER_SMTP_PASSWORD
+
+volumes:
+  prometheus-data: {}
+  grafana-data: {}
+  loki-data: {}
+  uptime-kuma-data: {}

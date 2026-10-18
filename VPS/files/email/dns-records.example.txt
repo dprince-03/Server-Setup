@@ -1,0 +1,47 @@
+EMAIL DNS RECORDS, EXPLAINED (example.com)
+==========================================
+
+1. MX: where incoming mail goes (lower number = preferred)
+   example.com.   MX  10  mx1.mailprovider.com.
+   example.com.   MX  20  mx2.mailprovider.com.
+   A domain that receives NO mail:   example.com.  MX 0 .        (null MX, RFC 7505)
+
+2. SPF: which servers may send mail using your domain in the envelope (Return-Path)
+   example.com.   TXT "v=spf1 include:_spf.mailprovider.com include:amazonses.com -all"
+   - ONE SPF record per name. Merge the includes into it.
+   - At most 10 DNS lookups in total (each include/a/mx/exists counts). Check with an SPF lookup tool.
+   - "-all" = hard fail anything else. "~all" = soft fail (OK while migrating).
+   - A domain that sends NO mail:   "v=spf1 -all"
+
+3. DKIM: public key that verifies signatures added by the sending service
+   selector1._domainkey.example.com.  CNAME  selector1.dkim.mailprovider.com.   (provider-managed key, rotates for you)
+   or
+   s2026._domainkey.example.com.      TXT    "v=DKIM1; k=rsa; p=MIIBIjANBgkqh..."  (self-managed, 2048-bit)
+   - Each sending service has its own selector(s). Add one set per service.
+
+4. DMARC: tells receivers what to do when SPF/DKIM fail or don't ALIGN with the From: domain
+   _dmarc.example.com.  TXT "v=DMARC1; p=none; rua=mailto:dmarc@example.com; adkim=s; aspf=s"
+   Rollout: p=none (2-4 weeks, read the rua reports) → p=quarantine → p=reject
+   - rua = daily aggregate XML reports. Use a parser (parsedmarc, Postmark DMARC, dmarcian).
+   - Sub-domains inherit unless they publish their own record, or you set sp=.
+
+5. PTR (reverse DNS): ONLY when you run your own sending server
+   Set at the VPS provider:  203.0.113.25 → mail.example.com
+   Forward record must match: mail.example.com. A 203.0.113.25
+
+6. MTA-STS + TLS-RPT: require TLS for mail delivered TO you
+   _mta-sts.example.com.  TXT "v=STSv1; id=20261018"            (change the id whenever the policy changes)
+   https://mta-sts.example.com/.well-known/mta-sts.txt            (see mta-sts.txt)
+   _smtp._tls.example.com. TXT "v=TLSRPTv1; rua=mailto:tlsrpt@example.com"
+
+7. Autodiscover/autoconfig: client setup convenience (provider-specific)
+   autodiscover.example.com. CNAME autodiscover.mailprovider.com.
+
+CHECKLIST
+  [ ] MX resolves         dig +short MX example.com
+  [ ] SPF valid, < 10 lookups
+  [ ] DKIM passes         (Gmail → Show original → DKIM: PASS with d=example.com)
+  [ ] DMARC passes and is aligned
+  [ ] mail-tester.com score 10/10
+  [ ] Postmaster Tools (Google) + SNDS (Microsoft) registered for bulk/transactional senders
+  [ ] postmaster@ and abuse@ mailboxes exist and are read

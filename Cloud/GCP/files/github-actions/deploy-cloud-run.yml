@@ -1,0 +1,43 @@
+# .github/workflows/deploy-cloud-run.yml: build → Artifact Registry → Cloud Run, via Workload Identity Federation (no keys)
+# GitHub Environment "production" → Variables: GCP_WIF_PROVIDER, GCP_DEPLOY_SA, GCP_PROJECT, GCP_REGION, GAR_REPO, SERVICE
+name: deploy-cloud-run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push
+        run: |
+          gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+          docker build -t "${{ vars.GAR_REPO }}/app:${{ github.sha }}" .
+          docker push "${{ vars.GAR_REPO }}/app:${{ github.sha }}"
+
+      - name: Deploy (new revision without traffic, then shift traffic)
+        run: |
+          gcloud run deploy "${{ vars.SERVICE }}" \
+            --project "${{ vars.GCP_PROJECT }}" --region "${{ vars.GCP_REGION }}" \
+            --image "${{ vars.GAR_REPO }}/app:${{ github.sha }}" \
+            --no-traffic --tag "sha-${GITHUB_SHA::7}"
+          # smoke-test the tagged revision URL here if you want, then:
+          gcloud run services update-traffic "${{ vars.SERVICE }}" \
+            --project "${{ vars.GCP_PROJECT }}" --region "${{ vars.GCP_REGION }}" --to-latest

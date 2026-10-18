@@ -1,0 +1,125 @@
+# /opt/stacks/myapp/compose.yaml: production-style single-VPS stack. NO .env file.
+# Secrets come from the secret manager at runtime (Server-Setup/SECRETS.md):
+#   sudo systemctl restart stack@myapp     → bws run --project-id <id> -- docker compose up -d
+# Secret manager project must contain (you type the values): POSTGRES_PASSWORD, APP_SECRET_KEY, EMAIL_API_KEY, S3_SECRET_ACCESS_KEY
+# Each secret is mounted as a FILE at /run/secrets/<name> (not visible in `docker inspect`).
+# Non-secret settings live right here. IMAGE_TAG comes from /opt/stacks/myapp/RELEASE (written by CI).
+name: myapp
+
+x-app-env: &app-env
+  APP_URL: https://app.example.com
+  DB_HOST: db
+  DB_NAME: app
+  DB_USER: app
+  DB_PASSWORD_FILE: /run/secrets/postgres_password
+  APP_SECRET_KEY_FILE: /run/secrets/app_secret_key
+  EMAIL_API_KEY_FILE: /run/secrets/email_api_key
+  EMAIL_FROM: no-reply@notify.example.com
+  REDIS_URL: redis://redis:6379/0
+  S3_ENDPOINT: https://<account>.r2.cloudflarestorage.com
+  S3_BUCKET: myapp-uploads
+  S3_ACCESS_KEY_ID: REPLACE_WITH_KEY_ID          # an identifier, not a secret
+  S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_access_key
+
+services:
+  caddy:
+    image: caddy:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"          # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./www:/srv/www:ro
+      - caddy-data:/data        # certificates: keep this volume!
+      - caddy-config:/config
+    networks: [edge]
+    depends_on:
+      app:
+        condition: service_healthy
+
+  app:
+    image: ghcr.io/your-github-user/myapp:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment: *app-env
+    secrets: [postgres_password, app_secret_key, email_api_key, s3_secret_access_key]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [edge, backend]
+    deploy:
+      resources:
+        limits: { cpus: "1.5", memory: 1g }
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+
+  worker:
+    image: ghcr.io/your-github-user/myapp:${IMAGE_TAG:-latest}
+    command: ["npm", "run", "worker"]     # adjust per framework
+    restart: unless-stopped
+    environment: *app-env
+    secrets: [postgres_password, app_secret_key, email_api_key, s3_secret_access_key]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [backend]
+
+  db:
+    image: postgres:latest       # pin the major (e.g. postgres:18) once in production; majors need pg_upgrade
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_DB: app
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - pg-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [backend]          # NOT published to the host
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+    networks: [backend]
+
+# Values are taken from environment variables injected by the secret manager (`bws run`)
+secrets:
+  postgres_password:
+    environment: POSTGRES_PASSWORD
+  app_secret_key:
+    environment: APP_SECRET_KEY
+  email_api_key:
+    environment: EMAIL_API_KEY
+  s3_secret_access_key:
+    environment: S3_SECRET_ACCESS_KEY
+
+networks:
+  edge: {}
+  backend:
+    internal: true               # no internet access, no host exposure
+
+volumes:
+  caddy-data: {}
+  caddy-config: {}
+  pg-data: {}
+  redis-data: {}

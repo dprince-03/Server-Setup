@@ -1,0 +1,37 @@
+---
+# Rolling patch run: one host at a time, reboot only if required, stop on the first failure.
+#   ansible-playbook playbooks/patch.yml            (all linux hosts)
+#   ansible-playbook playbooks/patch.yml -l app-01  (canary first)
+- name: Rolling patch
+  hosts: linux
+  become: true
+  serial: 1
+  max_fail_percentage: 0
+  tasks:
+    - name: Upgrade packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: full
+        autoremove: true
+
+    - name: Reboot required?
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Reboot and wait
+      ansible.builtin.reboot:
+        reboot_timeout: 900
+        msg: "Rebooting for patches (Ansible)"
+      when: reboot_required.stat.exists
+
+    - name: Restart services with outdated libraries
+      ansible.builtin.command: needrestart -r a -q
+      changed_when: false
+      failed_when: false
+
+    - name: Health check (adjust per role, e.g. HTTP check on app hosts)
+      ansible.builtin.command: systemctl is-system-running
+      register: sysstate
+      changed_when: false
+      failed_when: sysstate.stdout not in ['running', 'degraded']

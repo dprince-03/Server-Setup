@@ -1,0 +1,22 @@
+// /etc/apt/apt.conf.d/52unattended-upgrades-local
+// Local overrides for unattended-upgrades (Ubuntu/Debian). Security updates only by default.
+
+Unattended-Upgrade::Allowed-Origins {
+        "${distro_id}:${distro_codename}-security";
+        "${distro_id}ESMApps:${distro_codename}-apps-security";
+        "${distro_id}ESM:${distro_codename}-infra-security";
+};
+
+// Remove unused kernels/dependencies to keep /boot from filling up
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+// Reboot policy: off by default, so reboots happen in a maintenance window.
+// For single non-critical servers you may enable an automatic early-morning reboot:
+Unattended-Upgrade::Automatic-Reboot "false";
+// Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+
+// Email a report (needs a working MTA such as msmtp-mta)
+// Unattended-Upgrade::Mail "ops@example.com";
+// Unattended-Upgrade::MailReport "on-change";

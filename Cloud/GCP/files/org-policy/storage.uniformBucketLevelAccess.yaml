@@ -1,0 +1,5 @@
+# IAM-only bucket permissions (no legacy object ACLs).
+name: organizations/ORG_ID/policies/storage.uniformBucketLevelAccess
+spec:
+  rules:
+    - enforce: true

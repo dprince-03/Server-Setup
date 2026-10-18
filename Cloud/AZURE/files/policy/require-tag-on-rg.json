@@ -1,0 +1,25 @@
+{
+  "properties": {
+    "displayName": "Require a tag on resource groups",
+    "policyType": "Custom",
+    "mode": "All",
+    "description": "Denies creation of resource groups without the specified tag (default: owner).",
+    "metadata": { "category": "Tags", "version": "1.0.0" },
+    "parameters": {
+      "tagName": {
+        "type": "String",
+        "metadata": { "displayName": "Tag name", "description": "Name of the required tag, e.g. owner" },
+        "defaultValue": "owner"
+      }
+    },
+    "policyRule": {
+      "if": {
+        "allOf": [
+          { "field": "type", "equals": "Microsoft.Resources/subscriptions/resourceGroups" },
+          { "field": "[concat('tags[', parameters('tagName'), ']')]", "exists": "false" }
+        ]
+      },
+      "then": { "effect": "deny" }
+    }
+  }
+}

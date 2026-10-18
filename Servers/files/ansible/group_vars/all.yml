@@ -1,0 +1,42 @@
+---
+# Shared settings for all hosts. Secrets NEVER go here or anywhere in the repo. Fetch them at run time
+# from the secret manager with a lookup plugin (see Servers/07 and Server-Setup/SECRETS.md).
+
+timezone: UTC
+ssh_port: 22
+admin_group: ssh-users
+
+# Admins: one entry per human. Remove a person here and re-run baseline.yml to off-board them everywhere.
+admins:
+  - name: deploy
+    state: present
+    keys:
+      - "ssh-ed25519 AAAAREPLACE_ME you@laptop"
+  # - name: former-employee
+  #   state: absent
+
+# Networks allowed to SSH in (admin VLAN, VPN ranges)
+ssh_allowed_cidrs:
+  - 10.10.10.0/24
+  - 100.64.0.0/10
+
+# Extra ports to open per host/group (override in group_vars/<group>.yml), e.g. [80, 443]
+firewall_allowed_tcp_ports: []
+
+# Monitoring host allowed to scrape node_exporter on 9100
+monitoring_cidr: 10.10.20.31/32
+
+base_packages:
+  - curl
+  - ca-certificates
+  - jq
+  - htop
+  - iotop
+  - ncdu
+  - rsync
+  - fail2ban
+  - auditd
+  - chrony
+  - unattended-upgrades
+  - needrestart
+  - prometheus-node-exporter

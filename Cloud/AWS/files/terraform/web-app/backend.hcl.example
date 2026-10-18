@@ -1,0 +1,7 @@
+# cp backend.hcl.example backend.hcl && terraform init -backend-config=backend.hcl
+# (No secrets here: bucket names and keys are not sensitive. Credentials come from `aws sso login`.)
+bucket       = "tfstate-111111111111-eu-west-1"
+key          = "myapp/dev/web-app.tfstate"
+region       = "eu-west-1"
+encrypt      = true
+use_lockfile = true

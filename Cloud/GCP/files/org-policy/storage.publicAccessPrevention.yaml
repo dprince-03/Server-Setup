@@ -1,0 +1,5 @@
+# Buckets can never be made public. Exempt only the projects that intentionally serve public assets.
+name: organizations/ORG_ID/policies/storage.publicAccessPrevention
+spec:
+  rules:
+    - enforce: true

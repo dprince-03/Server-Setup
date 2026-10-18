@@ -1,0 +1,5 @@
+# No public IPs on VMs (use load balancers, IAP for SSH, Cloud NAT for egress). Add exceptions per project if needed.
+name: organizations/ORG_ID/policies/compute.vmExternalIpAccess
+spec:
+  rules:
+    - denyAll: true

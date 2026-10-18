@@ -1,0 +1,71 @@
+groups:
+  - name: host
+    rules:
+      - alert: HostDown
+        expr: up{job="node"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.instance }} is down"
+          runbook: "docs/runbooks/host-down.md"
+
+      - alert: DiskWillFillIn24h
+        expr: predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"}[6h], 24*3600) < 0
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }} will fill within 24h"
+
+      - alert: DiskAlmostFull
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes) > 0.85
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }} is over 85% full"
+
+      - alert: LowMemory
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Less than 10% memory available on {{ $labels.instance }}"
+
+      - alert: HighLoad
+        expr: node_load15 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 1.5
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Sustained high load on {{ $labels.instance }}"
+
+      - alert: SystemdUnitFailed
+        expr: node_systemd_unit_state{state="failed"} == 1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Unit {{ $labels.name }} failed on {{ $labels.instance }}"
+
+  - name: endpoints
+    rules:
+      - alert: EndpointDown
+        expr: probe_success == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.instance }} is unreachable"
+
+      - alert: TLSCertExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 14
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expires in under 14 days"
+
+  - name: backups
+    rules:
+      # restic-backup.sh writes this metric through node_exporter's textfile collector
+      - alert: BackupStale
+        expr: time() - backup_last_success_timestamp_seconds > 26*3600
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "No successful backup on {{ $labels.instance }} in 26h"
